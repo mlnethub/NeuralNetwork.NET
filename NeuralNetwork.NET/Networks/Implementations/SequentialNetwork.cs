@@ -273,9 +273,7 @@ namespace NeuralNetworkNET.Networks.Implementations
             while (stream.TryRead(out LayerType type))
             {
                 // Deserialization attempt
-                INetworkLayer layer = null;
-                if (preference == ExecutionModePreference.Cuda) layer = NetworkLoader.CuDnnLayerDeserialize(stream, type);
-                if (layer == null) layer = NetworkLoader.CpuLayerDeserialize(stream, type);
+                INetworkLayer layer = NetworkLoader.CpuLayerDeserialize(stream, type);
                 if (layer == null) return null;
 
                 // Add to the queue

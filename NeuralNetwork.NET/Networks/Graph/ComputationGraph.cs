@@ -151,7 +151,7 @@ namespace NeuralNetworkNET.Networks.Graph
                             shape = parents[0].Info;
                             if (parents.Skip(1).Any(p => p.Info != shape)) throw new ComputationGraphBuildException("The inputs of a sum node must all have the same shape");
                             (ActivationType activation, ExecutionModePreference mode) = node.GetParameter<(ActivationType, ExecutionModePreference)>();
-                            next = SumNode.New(activation, mode, parents.Select(t => t.Node).ToArray());
+                            next = SumNode.New(activation, parents.Select(t => t.Node).ToArray());
                         }
                         else
                         {
@@ -246,9 +246,7 @@ namespace NeuralNetworkNET.Networks.Graph
                 {
                     case ComputationGraphNodeType.Processing:
                         if (!stream.TryRead(out LayerType layerType)) return null;
-                        INetworkLayer layer = null;
-                        if (preference == ExecutionModePreference.Cuda) layer = NetworkLoader.CuDnnLayerDeserialize(stream, layerType);
-                        if (layer == null) layer = NetworkLoader.CpuLayerDeserialize(stream, layerType);
+                        INetworkLayer layer = NetworkLoader.CpuLayerDeserialize(stream, layerType);
                         if (layer == null) return null;
                         map[id] = new NodeBuilder(type, new LayerFactory(_ => layer));
                         break;

@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
-using NeuralNetworkNET.APIs;
 using NeuralNetworkNET.APIs.Delegates;
 using NeuralNetworkNET.APIs.Enums;
 using NeuralNetworkNET.Extensions;
@@ -110,9 +109,7 @@ namespace NeuralNetworkNET.Networks.Graph
         [MustUseReturnValue, NotNull]
         public NodeBuilder Sum(ActivationType activation, params NodeBuilder[] inputs)
         {
-            ExecutionModePreference mode = CuDnnNetworkLayers.IsCudaSupportAvailable
-                ? ExecutionModePreference.Cuda
-                : ExecutionModePreference.Cpu;
+            ExecutionModePreference mode = ExecutionModePreference.Cpu;
             return New(ComputationGraphNodeType.Sum, (activation, mode), inputs);
         }
 

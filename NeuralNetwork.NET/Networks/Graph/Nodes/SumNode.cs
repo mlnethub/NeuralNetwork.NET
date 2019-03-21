@@ -1,13 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using Alea;
-using Alea.cuDNN;
 using JetBrains.Annotations;
 using NeuralNetworkNET.APIs.Enums;
 using NeuralNetworkNET.APIs.Interfaces;
 using NeuralNetworkNET.APIs.Structs;
 using NeuralNetworkNET.cpuDNN;
-using NeuralNetworkNET.cuDNN;
 using NeuralNetworkNET.Extensions;
 using NeuralNetworkNET.Networks.Activations;
 using NeuralNetworkNET.Networks.Activations.Delegates;
@@ -48,14 +45,9 @@ namespace NeuralNetworkNET.Networks.Graph.Nodes
         /// Creates a new <see cref="SumNode"/> with the given parameters
         /// </summary>
         /// <param name="activation">The sum node activation function</param>
-        /// <param name="mode">The desired execution mode</param>
         /// <param name="parents">The parent nodes for the new sum mode to create</param>
         [Pure, NotNull]
-        public static SumNode New(ActivationType activation, ExecutionModePreference mode, [NotNull] [ItemNotNull] IReadOnlyList<IComputationGraphNode> parents)
-        {
-            if (mode == ExecutionModePreference.Cpu) return new CpuSumNode(activation, parents);
-            return new CudaSumNode(activation, parents);
-        }
+        public static SumNode New(ActivationType activation, [NotNull] [ItemNotNull] IReadOnlyList<IComputationGraphNode> parents) => new CpuSumNode(activation, parents);
 
         #endregion
 
@@ -74,8 +66,6 @@ namespace NeuralNetworkNET.Networks.Graph.Nodes
         /// <param name="dy">The output error delta to backpropagate</param>
         /// <param name="dx">The resulting backpropagated error</param>
         public abstract void Backpropagate(in Tensor y, in Tensor dy, in Tensor dx);
-
-        #region Implementation
 
         /// <summary>
         /// A CPU-powered sum node
@@ -98,61 +88,6 @@ namespace NeuralNetworkNET.Networks.Graph.Nodes
             public override void Backpropagate(in Tensor y, in Tensor dy, in Tensor dx)
                 => CpuDnn.ActivationBackward(y, dy, ActivationFunctions.ActivationPrime, dx);
         }
-
-        /// <summary>
-        /// A CUDA-powered sum node
-        /// </summary>
-        private sealed class CudaSumNode : SumNode
-        {
-            // The NCHW tensor info for the node inputs and output
-            [NotNull]
-            private readonly TensorDescriptor Descriptor = new TensorDescriptor();
-
-            /// <summary>
-            /// Gets the <see cref="Dnn"/> instance for the current node
-            /// </summary>
-            [NotNull]
-            private readonly Dnn DnnInstance = CuDnnService.Instance;
-
-            public CudaSumNode(ActivationType activation, [NotNull] [ItemNotNull] IReadOnlyList<IComputationGraphNode> parents) 
-                : base(ExecutionModePreference.Cuda, activation, parents) { }
-
-            /// <inheritdoc/>
-            public override unsafe void Forward(Span<Tensor> inputs, out Tensor z, out Tensor a)
-            {
-                Descriptor.Set4D(DataType.FLOAT, TensorFormat.CUDNN_TENSOR_NCHW, inputs[0].Entities, inputs[0].Length, 1, 1);
-                fixed (Tensor* p = inputs)
-                {
-                    Tensor.New(p->Entities, p->Length, out z);
-                    using (DeviceMemory<float> y_gpu = DnnInstance.Gpu.AllocateDevice(*p))
-                    {
-                        // Sum the inputs
-                        for (int i = 1; i < inputs.Length; i++)
-                            using (DeviceMemory<float> x_gpu = DnnInstance.Gpu.AllocateDevice(p[i]))
-                                DnnInstance.AddTensor(1, Descriptor, x_gpu.Ptr, 1, Descriptor, y_gpu.Ptr);
-                        y_gpu.CopyToHost(p[0].Entities, p[0].Length, out z);
-
-                        // Activation
-                        DnnInstance.ActivationForward(p[0].Entities, p[0].Length, y_gpu.Ptr, y_gpu.Ptr, ActivationFunctions.Activation);
-                        y_gpu.CopyToHost(z.Entities, z.Length, out a);
-                    }
-                }
-            }
-
-            /// <inheritdoc/>
-            public override void Backpropagate(in Tensor y, in Tensor dy, in Tensor dx)
-            {
-                using (DeviceMemory<float>
-                    y_gpu = DnnInstance.Gpu.AllocateDevice(y),
-                    dy_gpu = DnnInstance.Gpu.AllocateDevice(dy))
-                {
-                    DnnInstance.ActivationBackward(y.Entities, y.Length, y_gpu.Ptr, dy_gpu.Ptr, ActivationFunctions.ActivationPrime, dy_gpu.Ptr);
-                    dy_gpu.CopyTo(dx);
-                }
-            }
-        }
-
-        #endregion
 
         /// <inheritdoc/>
         public override void Serialize(System.IO.Stream stream)
